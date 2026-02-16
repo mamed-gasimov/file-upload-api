@@ -1,0 +1,25 @@
+package server
+
+import (
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+
+	"github.com/mamed-gasimov/file-service/internal/handler"
+)
+
+func New(fileHandler *handler.FileHandler) *echo.Echo {
+	e := echo.New()
+
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
+	e.Use(middleware.CORS())
+
+	api := e.Group("/api")
+	{
+		api.GET("/files", fileHandler.ListFiles)
+		api.POST("/files", fileHandler.UploadFile)
+		api.DELETE("/files/:id", fileHandler.DeleteFile)
+	}
+
+	return e
+}

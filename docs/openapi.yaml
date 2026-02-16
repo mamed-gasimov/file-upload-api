@@ -1,0 +1,194 @@
+openapi: 3.0.3
+info:
+  title: File Service API
+  description: REST API for uploading, listing, and deleting files. Files are streamed to S3-compatible storage (MinIO) and metadata is persisted in PostgreSQL.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  /api/files:
+    get:
+      summary: List files
+      description: Returns a list of all uploaded files ordered by creation date (newest first).
+      operationId: listFiles
+      tags:
+        - files
+      responses:
+        "200":
+          description: A JSON array of file objects.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/File"
+              example:
+                - id: 1
+                  name: "report.pdf"
+                  size: 204800
+                  mime_type: "application/pdf"
+                  object_key: "2026/02/16/550e8400-e29b-41d4-a716-446655440000_report.pdf"
+                  created_at: "2026-02-16T12:00:00Z"
+                  updated_at: "2026-02-16T12:00:00Z"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    post:
+      summary: Upload a file
+      description: |
+        Accepts a file via multipart/form-data and streams it directly to S3 (MinIO) without buffering to disk.
+        File metadata (name, size, MIME type, object key) is saved to PostgreSQL.
+      operationId: uploadFile
+      tags:
+        - files
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The file to upload.
+      responses:
+        "201":
+          description: File uploaded successfully. Returns the created file metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/File"
+              example:
+                id: 2
+                name: "photo.png"
+                size: 102400
+                mime_type: "image/png"
+                object_key: "2026/02/16/7c9e6679-7425-40de-944b-e07fc1f90ae7_photo.png"
+                created_at: "2026-02-16T12:05:00Z"
+                updated_at: "2026-02-16T12:05:00Z"
+        "400":
+          description: Bad request — the `file` form field is missing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: "field 'file' is required"
+        "500":
+          description: Internal server error (storage or database failure).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/files/{id}:
+    delete:
+      summary: Delete a file
+      description: |
+        Deletes a file by its ID. Removes the object from S3 (MinIO) first,
+        then deletes the metadata record from PostgreSQL.
+      operationId: deleteFile
+      tags:
+        - files
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The unique identifier of the file to delete.
+          schema:
+            type: integer
+            format: int64
+            example: 1
+      responses:
+        "204":
+          description: File deleted successfully. No content returned.
+        "400":
+          description: Invalid file ID (not a number).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: "invalid file id"
+        "404":
+          description: File not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: "file not found: get file by id: no rows in result set"
+        "500":
+          description: Internal server error (storage or database failure).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    File:
+      type: object
+      description: Metadata of an uploaded file.
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique auto-incremented identifier.
+          example: 1
+        name:
+          type: string
+          description: Original filename as provided during upload.
+          example: "report.pdf"
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes.
+          example: 204800
+        mime_type:
+          type: string
+          description: MIME type of the file.
+          example: "application/pdf"
+        object_key:
+          type: string
+          description: Key under which the file is stored in S3 (date-prefixed with UUID).
+          example: "2026/02/16/550e8400-e29b-41d4-a716-446655440000_report.pdf"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the file record was created.
+          example: "2026-02-16T12:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the file record was last updated.
+          example: "2026-02-16T12:00:00Z"
+      required:
+        - id
+        - name
+        - size
+        - mime_type
+        - object_key
+        - created_at
+        - updated_at
+
+    Error:
+      type: object
+      description: Echo framework error response.
+      properties:
+        message:
+          type: string
+          description: Human-readable error message.
+          example: "internal server error"
+      required:
+        - message

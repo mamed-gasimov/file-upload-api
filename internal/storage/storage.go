@@ -1,0 +1,20 @@
+package storage
+
+import (
+	"context"
+	"io"
+)
+
+// Storage defines an abstraction over object-storage backends (S3 / MinIO / etc.).
+type Storage interface {
+	// Upload streams the content from reader directly into the bucket.
+	// objectKey is the destination key, size is the content length (-1 if unknown),
+	// contentType is the MIME type.
+	Upload(ctx context.Context, objectKey string, reader io.Reader, size int64, contentType string) error
+
+	// Delete removes the object by key.
+	Delete(ctx context.Context, objectKey string) error
+
+	// EnsureBucket creates the bucket if it does not exist.
+	EnsureBucket(ctx context.Context, bucket string) error
+}
