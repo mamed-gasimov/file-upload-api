@@ -3,11 +3,10 @@ package server
 import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-
-	"github.com/mamed-gasimov/file-service/internal/handler"
+	"github.com/mamed-gasimov/file-service/internal/files"
 )
 
-func New(fileHandler *handler.FileHandler) *echo.Echo {
+func New(fileHandler *files.FileHandler) *echo.Echo {
 	e := echo.New()
 
 	e.Use(middleware.Logger())

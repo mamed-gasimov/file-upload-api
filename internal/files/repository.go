@@ -1,12 +1,10 @@
-package repository
+package files
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/mamed-gasimov/file-service/internal/model"
 )
 
 type FileRepository struct {
@@ -17,7 +15,7 @@ func NewFileRepository(pool *pgxpool.Pool) *FileRepository {
 	return &FileRepository{pool: pool}
 }
 
-func (r *FileRepository) Create(ctx context.Context, f *model.File) error {
+func (r *FileRepository) Create(ctx context.Context, f *File) error {
 	query := `
 		INSERT INTO files (name, size, mime_type, object_key)
 		VALUES ($1, $2, $3, $4)
@@ -28,7 +26,7 @@ func (r *FileRepository) Create(ctx context.Context, f *model.File) error {
 	).Scan(&f.ID, &f.CreatedAt, &f.UpdatedAt)
 }
 
-func (r *FileRepository) List(ctx context.Context) ([]model.File, error) {
+func (r *FileRepository) List(ctx context.Context) ([]File, error) {
 	query := `SELECT id, name, size, mime_type, object_key, created_at, updated_at
 	           FROM files ORDER BY created_at DESC`
 
@@ -38,9 +36,9 @@ func (r *FileRepository) List(ctx context.Context) ([]model.File, error) {
 	}
 	defer rows.Close()
 
-	var files []model.File
+	var files []File
 	for rows.Next() {
-		var f model.File
+		var f File
 		if err := rows.Scan(&f.ID, &f.Name, &f.Size, &f.MimeType, &f.ObjectKey, &f.CreatedAt, &f.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan file: %w", err)
 		}
@@ -50,11 +48,11 @@ func (r *FileRepository) List(ctx context.Context) ([]model.File, error) {
 	return files, rows.Err()
 }
 
-func (r *FileRepository) GetByID(ctx context.Context, id int64) (*model.File, error) {
+func (r *FileRepository) GetByID(ctx context.Context, id int64) (*File, error) {
 	query := `SELECT id, name, size, mime_type, object_key, created_at, updated_at
 	           FROM files WHERE id = $1`
 
-	var f model.File
+	var f File
 	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&f.ID, &f.Name, &f.Size, &f.MimeType, &f.ObjectKey, &f.CreatedAt, &f.UpdatedAt,
 	)

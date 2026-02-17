@@ -10,10 +10,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/mamed-gasimov/file-service/internal/files"
 
 	"github.com/mamed-gasimov/file-service/internal/config"
-	"github.com/mamed-gasimov/file-service/internal/handler"
-	"github.com/mamed-gasimov/file-service/internal/repository"
 	"github.com/mamed-gasimov/file-service/internal/server"
 	miniostorage "github.com/mamed-gasimov/file-service/internal/storage/minio"
 )
@@ -68,8 +67,8 @@ func run() error {
 	log.Printf("MinIO bucket %q is ready\n", cfg.MinioBucket)
 
 	// --- Layers -------------------------------------------------------------
-	fileRepo := repository.NewFileRepository(pool)
-	fileHandler := handler.NewFileHandler(fileRepo, store)
+	fileRepo := files.NewFileRepository(pool)
+	fileHandler := files.NewFileHandler(fileRepo, store)
 
 	e := server.New(fileHandler)
 

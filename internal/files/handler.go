@@ -1,4 +1,4 @@
-package handler
+package files
 
 import (
 	"fmt"
@@ -9,17 +9,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
-	"github.com/mamed-gasimov/file-service/internal/model"
-	"github.com/mamed-gasimov/file-service/internal/repository"
 	"github.com/mamed-gasimov/file-service/internal/storage"
 )
 
 type FileHandler struct {
-	repo    *repository.FileRepository
+	repo    *FileRepository
 	storage storage.Storage
 }
 
-func NewFileHandler(repo *repository.FileRepository, storage storage.Storage) *FileHandler {
+func NewFileHandler(repo *FileRepository, storage storage.Storage) *FileHandler {
 	return &FileHandler{
 		repo:    repo,
 		storage: storage,
@@ -34,7 +32,7 @@ func (h *FileHandler) ListFiles(c echo.Context) error {
 	}
 
 	if files == nil {
-		files = []model.File{}
+		files = []File{}
 	}
 
 	return c.JSON(http.StatusOK, files)
@@ -69,7 +67,7 @@ func (h *FileHandler) UploadFile(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("upload to storage: %v", err))
 	}
 
-	f := &model.File{
+	f := &File{
 		Name:      fileHeader.Filename,
 		Size:      fileHeader.Size,
 		MimeType:  contentType,

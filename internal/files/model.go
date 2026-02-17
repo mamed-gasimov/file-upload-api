@@ -1,4 +1,4 @@
-package model
+package files
 
 import "time"
 
