@@ -10,7 +10,7 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - ./pg_data:/var/lib/postgresql/data
 
   minio:
     image: minio/minio:latest
@@ -24,8 +24,4 @@ services:
       - "${MINIO_PORT:-9000}:9000"
       - "9001:9001"
     volumes:
-      - minio_data:/data
-
-volumes:
-  pg_data:
-  minio_data:
+      - ./minio_data:/data

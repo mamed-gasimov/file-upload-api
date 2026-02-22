@@ -45,7 +45,12 @@ func (r *FileRepository) List(ctx context.Context) ([]File, error) {
 		files = append(files, f)
 	}
 
-	return files, rows.Err()
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return files, nil
 }
 
 func (r *FileRepository) GetByID(ctx context.Context, id int64) (*File, error) {

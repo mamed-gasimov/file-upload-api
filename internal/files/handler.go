@@ -35,7 +35,12 @@ func (h *FileHandler) ListFiles(c echo.Context) error {
 		files = []File{}
 	}
 
-	return c.JSON(http.StatusOK, files)
+	err = c.JSON(http.StatusOK, files)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("list files, json marshalling: %v", err))
+	}
+
+	return nil
 }
 
 // UploadFile POST /api/files — uploads a file to S3 via streaming and saves metadata to DB.
