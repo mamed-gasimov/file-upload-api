@@ -1,4 +1,5 @@
-CREATE TABLE IF NOT EXISTS files (
+-- +goose Up
+CREATE TABLE files (
     id         BIGSERIAL    PRIMARY KEY,
     name       TEXT         NOT NULL,
     size       BIGINT       NOT NULL DEFAULT 0,
@@ -7,3 +8,6 @@ CREATE TABLE IF NOT EXISTS files (
     created_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
+
+-- +goose Down
+DROP TABLE IF EXISTS files;

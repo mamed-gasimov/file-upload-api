@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
@@ -10,9 +11,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/mamed-gasimov/file-service/internal/files"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 
 	"github.com/mamed-gasimov/file-service/internal/config"
+	"github.com/mamed-gasimov/file-service/internal/files"
 	"github.com/mamed-gasimov/file-service/internal/server"
 	miniostorage "github.com/mamed-gasimov/file-service/internal/storage/minio"
 )
@@ -44,8 +47,7 @@ func run() error {
 	}
 	log.Println("connected to PostgreSQL")
 
-	// Run migrations
-	if err := runMigrations(ctx, pool); err != nil {
+	if err := runMigrations(cfg.PostgresDSN()); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 
@@ -92,14 +94,19 @@ func run() error {
 	return e.Shutdown(shutdownCtx)
 }
 
-func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
-	migration, err := os.ReadFile("migrations/001_create_files.sql")
+func runMigrations(dsn string) error {
+	db, err := sql.Open("pgx", dsn)
 	if err != nil {
-		return fmt.Errorf("read migration file: %w", err)
+		return fmt.Errorf("open db for migrations: %w", err)
+	}
+	defer db.Close()
+
+	if err := goose.SetDialect("postgres"); err != nil {
+		return fmt.Errorf("set goose dialect: %w", err)
 	}
 
-	if _, err := pool.Exec(ctx, string(migration)); err != nil {
-		return fmt.Errorf("exec migration: %w", err)
+	if err := goose.Up(db, "migrations"); err != nil {
+		return fmt.Errorf("goose up: %w", err)
 	}
 
 	log.Println("migrations applied")
