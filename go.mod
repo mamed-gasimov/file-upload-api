@@ -3,7 +3,7 @@ module github.com/mamed-gasimov/file-service
 go 1.25.0
 
 require (
-	github.com/caarlos0/env v3.5.0+incompatible
+	github.com/caarlos0/env/v11 v11.4.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/joho/godotenv v1.5.1

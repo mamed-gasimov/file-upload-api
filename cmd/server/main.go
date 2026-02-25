@@ -75,7 +75,8 @@ func run() error {
 
 	// --- Layers -------------------------------------------------------------
 	fileRepo := files.NewFileRepository(pool)
-	fileHandler := files.NewFileHandler(fileRepo, store, analysisProvider)
+	fileSvc := files.NewFileService(fileRepo, store, analysisProvider)
+	fileHandler := files.NewFileHandler(fileSvc)
 
 	e := server.New(fileHandler)
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/caarlos0/env"
+	"github.com/caarlos0/env/v11"
 	"github.com/joho/godotenv"
 )
 
@@ -17,15 +17,15 @@ type Config struct {
 		User     string `env:"USER,required" envDefault:"fileuser"`
 		Password string `env:"PASSWORD,required" envDefault:"filepass"`
 		Database string `env:"DB,required" envDefault:"filedb"`
-		SSLMode  string `env:"SSL" envDefault:"false"`
+		SSLMode  string `env:"SSLMODE" envDefault:"disable"`
 	} `envPrefix:"POSTGRES_"`
 
 	Minio struct {
-		Endpoint  string `env:"ENDPOINT" envDefault:"http://localhost:9000"`
+		Endpoint  string `env:"ENDPOINT" envDefault:"localhost:9000"`
 		AccessKey string `env:"ACCESS_KEY,required" envDefault:"minioadmin"`
 		SecretKey string `env:"SECRET_KEY,required" envDefault:"minioadmin"`
 		Bucket    string `env:"BUCKET,required" envDefault:"files"`
-		UseSSL    bool   `env:"SSL" envDefault:"false"`
+		UseSSL    bool   `env:"USE_SSL" envDefault:"false"`
 	} `envPrefix:"MINIO_"`
 
 	OpenAI struct {
