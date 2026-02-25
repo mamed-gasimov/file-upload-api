@@ -68,6 +68,22 @@ func (r *FileRepository) GetByID(ctx context.Context, id int64) (*File, error) {
 	return &f, nil
 }
 
+func (r *FileRepository) UpdateResume(ctx context.Context, id int64, resume string) (*File, error) {
+	query := `UPDATE files SET resume = $1, updated_at = NOW()
+	           WHERE id = $2
+	           RETURNING id, name, size, mime_type, object_key, created_at, updated_at, resume`
+
+	var f File
+	err := r.pool.QueryRow(ctx, query, resume, id).Scan(
+		&f.ID, &f.Name, &f.Size, &f.MimeType, &f.ObjectKey, &f.CreatedAt, &f.UpdatedAt, &f.Resume,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("update resume: %w", err)
+	}
+
+	return &f, nil
+}
+
 func (r *FileRepository) Delete(ctx context.Context, id int64) error {
 	query := `DELETE FROM files WHERE id = $1`
 

@@ -1,8 +1,6 @@
 package files
 
 import (
-	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 
@@ -65,31 +63,20 @@ func (h *FileHandler) DeleteFile(c echo.Context) error {
 }
 
 func (h *FileHandler) AnalyzeFile(c echo.Context) error {
-	fileHeader, err := c.FormFile("file")
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "field 'file' is required")
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid file id")
 	}
 
-	src, err := fileHeader.Open()
+	f, err := h.svc.AnalyzeFile(c.Request().Context(), id)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "cannot open uploaded file")
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
-	defer src.Close()
 
-	content, err := io.ReadAll(src)
+	err = c.JSON(http.StatusOK, f)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "cannot read uploaded file")
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	contentType := fileHeader.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
-
-	f, err := h.svc.AnalyzeFile(c.Request().Context(), fileHeader.Filename, content, fileHeader.Size, contentType)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("analyze file: %v", err))
-	}
-
-	return c.JSON(http.StatusCreated, f)
+	return nil
 }

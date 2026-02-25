@@ -66,6 +66,15 @@ func (c *Client) Upload(ctx context.Context, objectKey string, reader io.Reader,
 	return nil
 }
 
+// Download returns a ReadCloser streaming the object content.
+func (c *Client) Download(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+	obj, err := c.client.GetObject(ctx, c.bucket, objectKey, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get object %q: %w", objectKey, err)
+	}
+	return obj, nil
+}
+
 // Delete removes an object from the bucket by key.
 func (c *Client) Delete(ctx context.Context, objectKey string) error {
 	err := c.client.RemoveObject(ctx, c.bucket, objectKey, minio.RemoveObjectOptions{})

@@ -1,8 +1,11 @@
 openapi: 3.0.3
 info:
   title: File Service API
-  description: REST API for uploading, listing, and deleting files. Files are streamed to S3-compatible storage (MinIO) and metadata is persisted in PostgreSQL.
-  version: 1.0.0
+  description: >
+    REST API for uploading, listing, deleting, and analyzing files.
+    Files are streamed to S3-compatible storage (MinIO) and metadata is persisted in PostgreSQL.
+    Uploaded files can be analyzed via OpenAI to generate a brief AI summary (resume).
+  version: 1.1.0
 
 servers:
   - url: http://localhost:8080
@@ -33,6 +36,15 @@ paths:
                   object_key: "2026/02/16/550e8400-e29b-41d4-a716-446655440000_report.pdf"
                   created_at: "2026-02-16T12:00:00Z"
                   updated_at: "2026-02-16T12:00:00Z"
+                  resume: "This PDF contains a quarterly financial report covering Q4 2025 results."
+                - id: 2
+                  name: "notes.txt"
+                  size: 1024
+                  mime_type: "text/plain"
+                  object_key: "2026/02/16/7c9e6679-7425-40de-944b-e07fc1f90ae7_notes.txt"
+                  created_at: "2026-02-16T11:00:00Z"
+                  updated_at: "2026-02-16T11:00:00Z"
+                  resume: null
         "500":
           description: Internal server error.
           content:
@@ -76,6 +88,7 @@ paths:
                 object_key: "2026/02/16/7c9e6679-7425-40de-944b-e07fc1f90ae7_photo.png"
                 created_at: "2026-02-16T12:05:00Z"
                 updated_at: "2026-02-16T12:05:00Z"
+                resume: null
         "400":
           description: Bad request — the `file` form field is missing.
           content:
@@ -135,6 +148,56 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/files/{id}/analyze:
+    post:
+      summary: Analyze a file
+      description: |
+        Downloads the file content from object storage, sends it to OpenAI (GPT-4o Mini)
+        for analysis, and stores the resulting summary in the `resume` field.
+        File content is truncated to 100 000 characters before being sent to the model.
+      operationId: analyzeFile
+      tags:
+        - files
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The unique identifier of the file to analyze.
+          schema:
+            type: integer
+            format: int64
+            example: 1
+      responses:
+        "200":
+          description: File analyzed successfully. Returns the updated file metadata with the AI-generated resume.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/File"
+              example:
+                id: 1
+                name: "report.pdf"
+                size: 204800
+                mime_type: "application/pdf"
+                object_key: "2026/02/16/550e8400-e29b-41d4-a716-446655440000_report.pdf"
+                created_at: "2026-02-16T12:00:00Z"
+                updated_at: "2026-02-16T12:10:00Z"
+                resume: "This PDF contains a quarterly financial report covering Q4 2025 revenue, expenses, and net income. Key highlights include a 12% year-over-year revenue increase."
+        "400":
+          description: Invalid file ID (not a number).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: "invalid file id"
+        "500":
+          description: Internal server error (file not found, storage failure, or OpenAI API error).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   schemas:
     File:
@@ -173,6 +236,11 @@ components:
           format: date-time
           description: Timestamp when the file record was last updated.
           example: "2026-02-16T12:00:00Z"
+        resume:
+          type: string
+          nullable: true
+          description: AI-generated summary of the file content. Null until the file is analyzed via the analyze endpoint.
+          example: "This PDF contains a quarterly financial report covering Q4 2025 results."
       required:
         - id
         - name
@@ -181,6 +249,7 @@ components:
         - object_key
         - created_at
         - updated_at
+        - resume
 
     Error:
       type: object

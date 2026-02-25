@@ -1,7 +1,6 @@
 package files
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -81,11 +80,21 @@ func (s *FileService) DeleteFile(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (s *FileService) AnalyzeFile(ctx context.Context, filename string, content []byte, size int64, contentType string) (*File, error) {
-	objectKey := generateObjectKey(filename)
+func (s *FileService) AnalyzeFile(ctx context.Context, id int64) (*File, error) {
+	file, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("file not found: %w", err)
+	}
 
-	if err := s.storage.Upload(ctx, objectKey, bytes.NewReader(content), size, contentType); err != nil {
-		return nil, fmt.Errorf("upload to storage: %w", err)
+	rc, err := s.storage.Download(ctx, file.ObjectKey)
+	if err != nil {
+		return nil, fmt.Errorf("download from storage: %w", err)
+	}
+	defer rc.Close()
+
+	content, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, fmt.Errorf("read file content: %w", err)
 	}
 
 	textContent := string(content)
@@ -95,24 +104,15 @@ func (s *FileService) AnalyzeFile(ctx context.Context, filename string, content 
 
 	resume, err := s.analyzer.FileResume(ctx, textContent)
 	if err != nil {
-		_ = s.storage.Delete(ctx, objectKey)
 		return nil, fmt.Errorf("analyze file: %w", err)
 	}
 
-	f := &File{
-		Name:      filename,
-		Size:      size,
-		MimeType:  contentType,
-		ObjectKey: objectKey,
-		Resume:    &resume,
+	updated, err := s.repo.UpdateResume(ctx, id, resume)
+	if err != nil {
+		return nil, fmt.Errorf("save analysis result: %w", err)
 	}
 
-	if err := s.repo.Create(ctx, f); err != nil {
-		_ = s.storage.Delete(ctx, objectKey)
-		return nil, fmt.Errorf("save file record: %w", err)
-	}
-
-	return f, nil
+	return updated, nil
 }
 
 func generateObjectKey(filename string) string {

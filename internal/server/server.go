@@ -17,7 +17,7 @@ func New(fileHandler *files.FileHandler) *echo.Echo {
 	{
 		api.GET("/files", fileHandler.ListFiles)
 		api.POST("/files", fileHandler.UploadFile)
-		api.POST("/files/analyze", fileHandler.AnalyzeFile)
+		api.POST("/files/:id/analyze", fileHandler.AnalyzeFile)
 		api.DELETE("/files/:id", fileHandler.DeleteFile)
 	}
 

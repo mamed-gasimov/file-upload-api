@@ -12,6 +12,9 @@ type Storage interface {
 	// contentType is the MIME type.
 	Upload(ctx context.Context, objectKey string, reader io.Reader, size int64, contentType string) error
 
+	// Download returns a ReadCloser for the object content. The caller must close it.
+	Download(ctx context.Context, objectKey string) (io.ReadCloser, error)
+
 	// Delete removes the object by key.
 	Delete(ctx context.Context, objectKey string) error
 
