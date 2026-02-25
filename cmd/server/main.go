@@ -15,7 +15,8 @@ import (
 	"github.com/pressly/goose/v3"
 
 	"github.com/mamed-gasimov/file-service/internal/config"
-	"github.com/mamed-gasimov/file-service/internal/files"
+	"github.com/mamed-gasimov/file-service/internal/modules/analysis/openai"
+	"github.com/mamed-gasimov/file-service/internal/modules/files"
 	"github.com/mamed-gasimov/file-service/internal/server"
 	miniostorage "github.com/mamed-gasimov/file-service/internal/storage/minio"
 )
@@ -52,25 +53,29 @@ func run() error {
 	}
 
 	// --- Object Storage (MinIO) ---------------------------------------------
+	minioBucket := cfg.Minio.Bucket
 	store, err := miniostorage.New(
-		cfg.MinioEndpoint,
-		cfg.MinioAccessKey,
-		cfg.MinioSecretKey,
-		cfg.MinioBucket,
-		cfg.MinioUseSSL,
+		cfg.Minio.Endpoint,
+		cfg.Minio.AccessKey,
+		cfg.Minio.SecretKey,
+		minioBucket,
+		cfg.Minio.UseSSL,
 	)
 	if err != nil {
 		return fmt.Errorf("init minio: %w", err)
 	}
 
-	if err := store.EnsureBucket(context.Background(), cfg.MinioBucket); err != nil {
+	if err := store.EnsureBucket(context.Background(), minioBucket); err != nil {
 		return fmt.Errorf("ensure bucket: %w", err)
 	}
-	log.Printf("MinIO bucket %q is ready\n", cfg.MinioBucket)
+	log.Printf("MinIO bucket %q is ready\n", minioBucket)
+
+	// --- Analysis (OpenAI) --------------------------------------------------
+	analysisProvider := openai.NewProvider(cfg.OpenAI.APIKey, cfg.OpenAI.BaseURL)
 
 	// --- Layers -------------------------------------------------------------
 	fileRepo := files.NewFileRepository(pool)
-	fileHandler := files.NewFileHandler(fileRepo, store)
+	fileHandler := files.NewFileHandler(fileRepo, store, analysisProvider)
 
 	e := server.New(fileHandler)
 

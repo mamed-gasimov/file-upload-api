@@ -1,7 +1,9 @@
 package files
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,22 +11,26 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
+	"github.com/mamed-gasimov/file-service/internal/modules/analysis"
 	"github.com/mamed-gasimov/file-service/internal/storage"
 )
 
+const maxAnalysisContentLen = 100_000
+
 type FileHandler struct {
-	repo    *FileRepository
-	storage storage.Storage
+	repo     *FileRepository
+	storage  storage.Storage
+	analyzer analysis.Provider
 }
 
-func NewFileHandler(repo *FileRepository, storage storage.Storage) *FileHandler {
+func NewFileHandler(repo *FileRepository, storage storage.Storage, analyzer analysis.Provider) *FileHandler {
 	return &FileHandler{
-		repo:    repo,
-		storage: storage,
+		repo:     repo,
+		storage:  storage,
+		analyzer: analyzer,
 	}
 }
 
-// ListFiles GET /api/files — returns a list of all uploaded files.
 func (h *FileHandler) ListFiles(c echo.Context) error {
 	files, err := h.repo.List(c.Request().Context())
 	if err != nil {
@@ -43,7 +49,6 @@ func (h *FileHandler) ListFiles(c echo.Context) error {
 	return nil
 }
 
-// UploadFile POST /api/files — uploads a file to S3 via streaming and saves metadata to DB.
 func (h *FileHandler) UploadFile(c echo.Context) error {
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
@@ -67,7 +72,6 @@ func (h *FileHandler) UploadFile(c echo.Context) error {
 		fileHeader.Filename,
 	)
 
-	// Stream the file body directly to MinIO (no temp file on disk).
 	if err := h.storage.Upload(c.Request().Context(), objectKey, src, fileHeader.Size, contentType); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("upload to storage: %v", err))
 	}
@@ -80,7 +84,6 @@ func (h *FileHandler) UploadFile(c echo.Context) error {
 	}
 
 	if err := h.repo.Create(c.Request().Context(), f); err != nil {
-		// best-effort cleanup of the uploaded object
 		_ = h.storage.Delete(c.Request().Context(), objectKey)
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("save file record: %v", err))
 	}
@@ -88,7 +91,6 @@ func (h *FileHandler) UploadFile(c echo.Context) error {
 	return c.JSON(http.StatusCreated, f)
 }
 
-// DeleteFile DELETE /api/files/:id — removes file from S3 and database.
 func (h *FileHandler) DeleteFile(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -109,4 +111,66 @@ func (h *FileHandler) DeleteFile(c echo.Context) error {
 	}
 
 	return c.NoContent(http.StatusNoContent)
+}
+
+// AnalyzeFile POST /api/files/analyze — uploads a file, generates an OpenAI overview, and stores both.
+func (h *FileHandler) AnalyzeFile(c echo.Context) error {
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "field 'file' is required")
+	}
+
+	src, err := fileHeader.Open()
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "cannot open uploaded file")
+	}
+	defer src.Close()
+
+	content, err := io.ReadAll(src)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "cannot read uploaded file")
+	}
+
+	contentType := fileHeader.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	objectKey := fmt.Sprintf("%s/%s_%s",
+		time.Now().Format("2006/01/02"),
+		uuid.NewString(),
+		fileHeader.Filename,
+	)
+
+	ctx := c.Request().Context()
+
+	if err := h.storage.Upload(ctx, objectKey, bytes.NewReader(content), fileHeader.Size, contentType); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("upload to storage: %v", err))
+	}
+
+	textContent := string(content)
+	if len(textContent) > maxAnalysisContentLen {
+		textContent = textContent[:maxAnalysisContentLen]
+	}
+
+	resume, err := h.analyzer.FileResume(ctx, textContent)
+	if err != nil {
+		_ = h.storage.Delete(ctx, objectKey)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("analyze file: %v", err))
+	}
+
+	f := &File{
+		Name:      fileHeader.Filename,
+		Size:      fileHeader.Size,
+		MimeType:  contentType,
+		ObjectKey: objectKey,
+		Resume:    &resume,
+	}
+
+	if err := h.repo.Create(ctx, f); err != nil {
+		_ = h.storage.Delete(ctx, objectKey)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("save file record: %v", err))
+	}
+
+	return c.JSON(http.StatusCreated, f)
 }

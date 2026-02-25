@@ -10,4 +10,5 @@ type File struct {
 	ObjectKey string    `json:"object_key"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	Resume    *string   `json:"resume"`
 }

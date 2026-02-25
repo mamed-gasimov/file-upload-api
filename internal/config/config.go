@@ -4,44 +4,46 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/caarlos0/env"
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	ServerPort string
+	ServerPort string `env:"SERVER_PORT" envDefault:"8080"`
 
-	PostgresHost     string
-	PostgresPort     string
-	PostgresUser     string
-	PostgresPassword string
-	PostgresDB       string
-	PostgresSSLMode  string
+	Postgres struct {
+		Host     string `env:"HOST" envDefault:"localhost"`
+		Port     string `env:"PORT" envDefault:"5432"`
+		User     string `env:"USER,required" envDefault:"fileuser"`
+		Password string `env:"PASSWORD,required" envDefault:"filepass"`
+		Database string `env:"DB,required" envDefault:"filedb"`
+		SSLMode  string `env:"SSL" envDefault:"false"`
+	} `envPrefix:"POSTGRES_"`
 
-	MinioEndpoint  string
-	MinioAccessKey string
-	MinioSecretKey string
-	MinioBucket    string
-	MinioUseSSL    bool
+	Minio struct {
+		Endpoint  string `env:"ENDPOINT" envDefault:"http://localhost:9000"`
+		AccessKey string `env:"ACCESS_KEY,required" envDefault:"minioadmin"`
+		SecretKey string `env:"SECRET_KEY,required" envDefault:"minioadmin"`
+		Bucket    string `env:"BUCKET,required" envDefault:"files"`
+		UseSSL    bool   `env:"SSL" envDefault:"false"`
+	} `envPrefix:"MINIO_"`
+
+	OpenAI struct {
+		APIKey  string `env:"API_KEY,required" envDefault:""`
+		BaseURL string `env:"BASE_URL,required" envDefault:"https://api.openai.com/v1/"`
+	} `envPrefix:"OPENAI_"`
 }
 
 func Load() (*Config, error) {
-	_ = godotenv.Load()
+	if _, err := os.Stat("./.env"); err == nil {
+		if err := godotenv.Load(".env"); err != nil {
+			return nil, fmt.Errorf("error loading .env file: %w", err)
+		}
+	}
 
-	cfg := &Config{
-		ServerPort: getEnv("SERVER_PORT", "8080"),
-
-		PostgresHost:     getEnv("POSTGRES_HOST", "localhost"),
-		PostgresPort:     getEnv("POSTGRES_PORT", "5432"),
-		PostgresUser:     getEnv("POSTGRES_USER", "fileuser"),
-		PostgresPassword: getEnv("POSTGRES_PASSWORD", "filepass"),
-		PostgresDB:       getEnv("POSTGRES_DB", "filedb"),
-		PostgresSSLMode:  getEnv("POSTGRES_SSLMODE", "disable"),
-
-		MinioEndpoint:  getEnv("MINIO_ENDPOINT", "localhost:9000"),
-		MinioAccessKey: getEnv("MINIO_ACCESS_KEY", "minioadmin"),
-		MinioSecretKey: getEnv("MINIO_SECRET_KEY", "minioadmin"),
-		MinioBucket:    getEnv("MINIO_BUCKET", "files"),
-		MinioUseSSL:    getEnv("MINIO_USE_SSL", "false") == "true",
+	cfg := &Config{}
+	if err := env.Parse(cfg); err != nil {
+		return nil, fmt.Errorf("error loading config: %w", err)
 	}
 
 	return cfg, nil
@@ -50,15 +52,8 @@ func Load() (*Config, error) {
 func (c *Config) PostgresDSN() string {
 	return fmt.Sprintf(
 		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		c.PostgresUser, c.PostgresPassword,
-		c.PostgresHost, c.PostgresPort,
-		c.PostgresDB, c.PostgresSSLMode,
+		c.Postgres.User, c.Postgres.Password,
+		c.Postgres.Host, c.Postgres.Port,
+		c.Postgres.Database, c.Postgres.SSLMode,
 	)
-}
-
-func getEnv(key, fallback string) string {
-	if val, ok := os.LookupEnv(key); ok {
-		return val
-	}
-	return fallback
 }
