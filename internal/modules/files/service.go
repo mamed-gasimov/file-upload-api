@@ -14,13 +14,22 @@ import (
 
 const maxAnalysisContentLen = 100_000
 
+type service interface {
+	ListFiles(ctx context.Context) ([]File, error)
+	UploadFile(ctx context.Context, filename string, reader io.Reader, size int64, contentType string) (*File, error)
+	DeleteFile(ctx context.Context, id int64) error
+	AnalyzeFile(ctx context.Context, id int64) (*File, error)
+}
+
+var _ service = (*FileService)(nil)
+
 type FileService struct {
-	repo     *FileRepository
+	repo     repository
 	storage  storage.Storage
 	analyzer analysis.Provider
 }
 
-func NewFileService(repo *FileRepository, storage storage.Storage, analyzer analysis.Provider) *FileService {
+func NewFileService(repo repository, storage storage.Storage, analyzer analysis.Provider) *FileService {
 	return &FileService{
 		repo:     repo,
 		storage:  storage,

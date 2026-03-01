@@ -8,10 +8,10 @@ import (
 )
 
 type FileHandler struct {
-	svc *FileService
+	svc service
 }
 
-func NewFileHandler(svc *FileService) *FileHandler {
+func NewFileHandler(svc service) *FileHandler {
 	return &FileHandler{svc: svc}
 }
 

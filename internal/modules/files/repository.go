@@ -7,6 +7,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type repository interface {
+	Create(ctx context.Context, f *File) error
+	List(ctx context.Context) ([]File, error)
+	GetByID(ctx context.Context, id int64) (*File, error)
+	UpdateResume(ctx context.Context, id int64, resume string) (*File, error)
+	Delete(ctx context.Context, id int64) error
+}
+
+var _ repository = (*FileRepository)(nil)
+
 type FileRepository struct {
 	pool *pgxpool.Pool
 }
