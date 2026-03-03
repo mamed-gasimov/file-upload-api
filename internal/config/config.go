@@ -32,6 +32,10 @@ type Config struct {
 		APIKey  string `env:"API_KEY,required" envDefault:""`
 		BaseURL string `env:"BASE_URL,required" envDefault:"https://api.openai.com/v1/"`
 	} `envPrefix:"OPENAI_"`
+
+	RabbitMQ struct {
+		URL string `env:"URL" envDefault:"amqp://guest:guest@localhost:5672/"`
+	} `envPrefix:"RABBITMQ_"`
 }
 
 func Load() (*Config, error) {
