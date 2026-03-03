@@ -8,3 +8,4 @@
 .DS_Store
 pg_data/
 minio_data/
+rabbitmq_data/

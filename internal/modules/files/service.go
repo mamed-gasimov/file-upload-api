@@ -2,12 +2,15 @@ package files
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/mamed-gasimov/file-service/internal/messaging"
 	"github.com/mamed-gasimov/file-service/internal/modules/analysis"
 	"github.com/mamed-gasimov/file-service/internal/storage"
 )
@@ -24,16 +27,18 @@ type service interface {
 var _ service = (*FileService)(nil)
 
 type FileService struct {
-	repo     repository
-	storage  storage.Storage
-	analyzer analysis.Provider
+	repo      repository
+	storage   storage.Storage
+	analyzer  analysis.Provider
+	publisher messaging.Publisher
 }
 
-func NewFileService(repo repository, storage storage.Storage, analyzer analysis.Provider) *FileService {
+func NewFileService(repo repository, storage storage.Storage, analyzer analysis.Provider, publisher messaging.Publisher) *FileService {
 	return &FileService{
-		repo:     repo,
-		storage:  storage,
-		analyzer: analyzer,
+		repo:      repo,
+		storage:   storage,
+		analyzer:  analyzer,
+		publisher: publisher,
 	}
 }
 
@@ -67,6 +72,22 @@ func (s *FileService) UploadFile(ctx context.Context, filename string, reader io
 	if err := s.repo.Create(ctx, f); err != nil {
 		_ = s.storage.Delete(ctx, objectKey)
 		return nil, fmt.Errorf("save file record: %w", err)
+	}
+
+	// Publish async translation request — non-fatal if broker is unavailable.
+	req := AnalyzeRequest{
+		FileID:        f.ID,
+		ObjectKey:     f.ObjectKey,
+		ContentType:   f.MimeType,
+		CorrelationID: uuid.NewString(),
+	}
+	body, err := json.Marshal(req)
+	if err != nil {
+		log.Printf("marshal analyze request for file %d: %v", f.ID, err)
+	} else if err := s.publisher.Publish(ctx, "", "file.analyze", body); err != nil {
+		log.Printf("publish analyze request for file %d: %v", f.ID, err)
+	} else {
+		log.Printf("published analyze request for file %d", f.ID)
 	}
 
 	return f, nil

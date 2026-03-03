@@ -11,6 +11,7 @@ require (
 	github.com/minio/minio-go/v7 v7.0.98
 	github.com/openai/openai-go v1.12.0
 	github.com/pressly/goose/v3 v3.26.0
+	github.com/rabbitmq/amqp091-go v1.10.0
 )
 
 require (

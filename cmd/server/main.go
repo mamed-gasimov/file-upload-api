@@ -15,6 +15,7 @@ import (
 	"github.com/pressly/goose/v3"
 
 	"github.com/mamed-gasimov/file-service/internal/config"
+	"github.com/mamed-gasimov/file-service/internal/messaging/rabbitmq"
 	"github.com/mamed-gasimov/file-service/internal/modules/analysis/openai"
 	"github.com/mamed-gasimov/file-service/internal/modules/files"
 	"github.com/mamed-gasimov/file-service/internal/server"
@@ -70,13 +71,25 @@ func run() error {
 	}
 	log.Printf("MinIO bucket %q is ready\n", minioBucket)
 
+	// --- Messaging (RabbitMQ) -----------------------------------------------
+	broker, err := rabbitmq.NewClient(cfg.RabbitMQ.URL)
+	if err != nil {
+		return fmt.Errorf("connect to rabbitmq: %w", err)
+	}
+	defer broker.Close()
+
 	// --- Analysis (OpenAI) --------------------------------------------------
 	analysisProvider := openai.NewProvider(cfg.OpenAI.APIKey, cfg.OpenAI.BaseURL)
 
 	// --- Layers -------------------------------------------------------------
 	fileRepo := files.NewFileRepository(pool)
-	fileSvc := files.NewFileService(fileRepo, store, analysisProvider)
+	fileSvc := files.NewFileService(fileRepo, store, analysisProvider, broker)
 	fileHandler := files.NewFileHandler(fileSvc)
+
+	// --- Result consumer (async translation replies) ------------------------
+	consumerCtx, consumerCancel := context.WithCancel(context.Background())
+	defer consumerCancel()
+	go files.ConsumeAnalysisResults(consumerCtx, broker, fileRepo)
 
 	e := server.New(fileHandler)
 
@@ -94,6 +107,8 @@ func run() error {
 	<-quit
 
 	log.Println("shutting down …")
+	consumerCancel()
+
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
