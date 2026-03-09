@@ -18,6 +18,7 @@ import (
 	"github.com/mamed-gasimov/file-service/internal/messaging/rabbitmq"
 	"github.com/mamed-gasimov/file-service/internal/modules/analysis/openai"
 	"github.com/mamed-gasimov/file-service/internal/modules/files"
+	"github.com/mamed-gasimov/file-service/internal/outbox"
 	"github.com/mamed-gasimov/file-service/internal/server"
 	miniostorage "github.com/mamed-gasimov/file-service/internal/storage/minio"
 )
@@ -83,8 +84,16 @@ func run() error {
 
 	// --- Layers -------------------------------------------------------------
 	fileRepo := files.NewFileRepository(pool)
-	fileSvc := files.NewFileService(fileRepo, store, analysisProvider, broker)
+	fileSvc := files.NewFileService(fileRepo, pool, store, analysisProvider)
 	fileHandler := files.NewFileHandler(fileSvc)
+
+	// --- Outbox poller (publishes pending events to RabbitMQ) ----------------
+	outboxRepo := outbox.NewRepository(pool)
+	outboxPoller := outbox.NewPoller(outboxRepo, broker, 2*time.Second, 50)
+
+	pollerCtx, pollerCancel := context.WithCancel(context.Background())
+	defer pollerCancel()
+	go outboxPoller.Run(pollerCtx)
 
 	// --- Result consumer (async translation replies) ------------------------
 	consumerCtx, consumerCancel := context.WithCancel(context.Background())
@@ -107,6 +116,7 @@ func run() error {
 	<-quit
 
 	log.Println("shutting down …")
+	pollerCancel()
 	consumerCancel()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)

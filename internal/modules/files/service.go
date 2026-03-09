@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/mamed-gasimov/file-service/internal/messaging"
 	"github.com/mamed-gasimov/file-service/internal/modules/analysis"
 	"github.com/mamed-gasimov/file-service/internal/storage"
+	"github.com/mamed-gasimov/file-service/pkg/db"
 )
 
 const maxAnalysisContentLen = 100_000
@@ -27,18 +28,18 @@ type service interface {
 var _ service = (*FileService)(nil)
 
 type FileService struct {
-	repo      repository
-	storage   storage.Storage
-	analyzer  analysis.Provider
-	publisher messaging.Publisher
+	repo     repository
+	pool     *pgxpool.Pool
+	storage  storage.Storage
+	analyzer analysis.Provider
 }
 
-func NewFileService(repo repository, storage storage.Storage, analyzer analysis.Provider, publisher messaging.Publisher) *FileService {
+func NewFileService(repo repository, pool *pgxpool.Pool, storage storage.Storage, analyzer analysis.Provider) *FileService {
 	return &FileService{
-		repo:      repo,
-		storage:   storage,
-		analyzer:  analyzer,
-		publisher: publisher,
+		repo:     repo,
+		pool:     pool,
+		storage:  storage,
+		analyzer: analyzer,
 	}
 }
 
@@ -69,26 +70,34 @@ func (s *FileService) UploadFile(ctx context.Context, filename string, reader io
 		ObjectKey: objectKey,
 	}
 
-	if err := s.repo.Create(ctx, f); err != nil {
+	err := db.WithTx(ctx, s.pool, func(txCtx context.Context) error {
+		if err := s.repo.Create(txCtx, f); err != nil {
+			return fmt.Errorf("save file record: %w", err)
+		}
+
+		req := AnalyzeRequest{
+			FileID:        f.ID,
+			ObjectKey:     f.ObjectKey,
+			ContentType:   f.MimeType,
+			CorrelationID: uuid.NewString(),
+		}
+		body, err := json.Marshal(req)
+		if err != nil {
+			return fmt.Errorf("marshal analyze request: %w", err)
+		}
+
+		if err := s.repo.CreateOutboxEvent(txCtx, "file.analyze", body); err != nil {
+			return fmt.Errorf("create outbox event: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
 		_ = s.storage.Delete(ctx, objectKey)
-		return nil, fmt.Errorf("save file record: %w", err)
+		return nil, fmt.Errorf("upload file tx: %w", err)
 	}
 
-	// Publish async translation request — non-fatal if broker is unavailable.
-	req := AnalyzeRequest{
-		FileID:        f.ID,
-		ObjectKey:     f.ObjectKey,
-		ContentType:   f.MimeType,
-		CorrelationID: uuid.NewString(),
-	}
-	body, err := json.Marshal(req)
-	if err != nil {
-		log.Printf("marshal analyze request for file %d: %v", f.ID, err)
-	} else if err := s.publisher.Publish(ctx, "", "file.analyze", body); err != nil {
-		log.Printf("publish analyze request for file %d: %v", f.ID, err)
-	} else {
-		log.Printf("published analyze request for file %d", f.ID)
-	}
+	log.Printf("file %d created with outbox event", f.ID)
 
 	return f, nil
 }

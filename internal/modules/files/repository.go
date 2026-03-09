@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/mamed-gasimov/file-service/pkg/db"
 )
 
 type repository interface {
@@ -14,6 +15,7 @@ type repository interface {
 	UpdateResume(ctx context.Context, id int64, resume string) (*File, error)
 	Delete(ctx context.Context, id int64) error
 	UpdateTranslationSummary(ctx context.Context, id int64, summary string) error
+	CreateOutboxEvent(ctx context.Context, routingKey string, payload []byte) error
 }
 
 var _ repository = (*FileRepository)(nil)
@@ -26,13 +28,17 @@ func NewFileRepository(pool *pgxpool.Pool) *FileRepository {
 	return &FileRepository{pool: pool}
 }
 
+func (r *FileRepository) conn(ctx context.Context) db.DBTX {
+	return db.ConnFromCtx(ctx, r.pool)
+}
+
 func (r *FileRepository) Create(ctx context.Context, f *File) error {
 	query := `
 		INSERT INTO files (name, size, mime_type, object_key, resume)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, created_at, updated_at`
 
-	return r.pool.QueryRow(ctx, query,
+	return r.conn(ctx).QueryRow(ctx, query,
 		f.Name, f.Size, f.MimeType, f.ObjectKey, f.Resume,
 	).Scan(&f.ID, &f.CreatedAt, &f.UpdatedAt)
 }
@@ -41,7 +47,7 @@ func (r *FileRepository) List(ctx context.Context) ([]File, error) {
 	query := `SELECT id, name, size, mime_type, object_key, created_at, updated_at, resume, translation_summary
 	           FROM files ORDER BY created_at DESC`
 
-	rows, err := r.pool.Query(ctx, query)
+	rows, err := r.conn(ctx).Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("query files: %w", err)
 	}
@@ -69,7 +75,7 @@ func (r *FileRepository) GetByID(ctx context.Context, id int64) (*File, error) {
 	           FROM files WHERE id = $1`
 
 	var f File
-	err := r.pool.QueryRow(ctx, query, id).Scan(
+	err := r.conn(ctx).QueryRow(ctx, query, id).Scan(
 		&f.ID, &f.Name, &f.Size, &f.MimeType, &f.ObjectKey, &f.CreatedAt, &f.UpdatedAt, &f.Resume, &f.TranslationSummary,
 	)
 	if err != nil {
@@ -85,7 +91,7 @@ func (r *FileRepository) UpdateResume(ctx context.Context, id int64, resume stri
 	           RETURNING id, name, size, mime_type, object_key, created_at, updated_at, resume, translation_summary`
 
 	var f File
-	err := r.pool.QueryRow(ctx, query, resume, id).Scan(
+	err := r.conn(ctx).QueryRow(ctx, query, resume, id).Scan(
 		&f.ID, &f.Name, &f.Size, &f.MimeType, &f.ObjectKey, &f.CreatedAt, &f.UpdatedAt, &f.Resume, &f.TranslationSummary,
 	)
 	if err != nil {
@@ -98,7 +104,7 @@ func (r *FileRepository) UpdateResume(ctx context.Context, id int64, resume stri
 func (r *FileRepository) Delete(ctx context.Context, id int64) error {
 	query := `DELETE FROM files WHERE id = $1`
 
-	ct, err := r.pool.Exec(ctx, query, id)
+	ct, err := r.conn(ctx).Exec(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("delete file: %w", err)
 	}
@@ -113,13 +119,24 @@ func (r *FileRepository) Delete(ctx context.Context, id int64) error {
 func (r *FileRepository) UpdateTranslationSummary(ctx context.Context, id int64, summary string) error {
 	query := `UPDATE files SET translation_summary = $1, updated_at = NOW() WHERE id = $2`
 
-	ct, err := r.pool.Exec(ctx, query, summary, id)
+	ct, err := r.conn(ctx).Exec(ctx, query, summary, id)
 	if err != nil {
 		return fmt.Errorf("update translation summary: %w", err)
 	}
 
 	if ct.RowsAffected() == 0 {
 		return fmt.Errorf("file with id %d not found", id)
+	}
+
+	return nil
+}
+
+func (r *FileRepository) CreateOutboxEvent(ctx context.Context, routingKey string, payload []byte) error {
+	query := `INSERT INTO outbox_events (routing_key, payload) VALUES ($1, $2)`
+
+	_, err := r.conn(ctx).Exec(ctx, query, routingKey, payload)
+	if err != nil {
+		return fmt.Errorf("create outbox event: %w", err)
 	}
 
 	return nil

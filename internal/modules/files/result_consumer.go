@@ -4,41 +4,62 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"time"
 
 	"github.com/mamed-gasimov/file-service/internal/messaging"
 )
 
 // ConsumeAnalysisResults reads from "file.analysis.result" and updates the DB.
 // It runs until ctx is cancelled. The caller starts it in a goroutine.
+// It reconnects automatically if the message channel closes.
 func ConsumeAnalysisResults(ctx context.Context, consumer messaging.Consumer, repo repository) {
-	msgs, err := consumer.Consume(ctx, "file.analysis.result")
-	if err != nil {
-		log.Printf("consume analysis results: %v", err)
-		return
-	}
-
 	for {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return
-		case body, ok := <-msgs:
-			if !ok {
+		}
+
+		msgs, err := consumer.Consume(ctx, "file.analysis.result")
+		if err != nil {
+			log.Printf("consume analysis results: %v — retrying in 5s", err)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Second):
+			}
+			continue
+		}
+
+		log.Println("result consumer: listening on file.analysis.result")
+		for d := range msgs {
+			if ctx.Err() != nil {
 				return
 			}
-			var reply AnalysisReply
-			if err := json.Unmarshal(body, &reply); err != nil {
-				log.Printf("unmarshal analysis reply: %v", err)
-				continue
-			}
-			if reply.Error != "" {
-				log.Printf("analysis error for file %d: %s", reply.FileID, reply.Error)
-				continue
-			}
-			if err := repo.UpdateTranslationSummary(ctx, reply.FileID, reply.TranslationSummary); err != nil {
-				log.Printf("update translation summary for file %d: %v", reply.FileID, err)
+			if err := handleAnalysisReply(ctx, d, repo); err != nil {
+				log.Printf("handle analysis reply: %v, sending to DLQ", err)
+				_ = d.Nack(false)
 			} else {
-				log.Printf("translation summary updated for file %d", reply.FileID)
+				_ = d.Ack()
 			}
 		}
+		log.Println("result consumer: message channel closed, reconnecting…")
 	}
+}
+
+func handleAnalysisReply(ctx context.Context, d messaging.Delivery, repo repository) error {
+	var reply AnalysisReply
+	if err := json.Unmarshal(d.Body, &reply); err != nil {
+		return err
+	}
+
+	if reply.Error != "" {
+		log.Printf("analysis error for file %d: %s", reply.FileID, reply.Error)
+		return nil
+	}
+
+	if err := repo.UpdateTranslationSummary(ctx, reply.FileID, reply.TranslationSummary); err != nil {
+		return err
+	}
+
+	log.Printf("translation summary updated for file %d", reply.FileID)
+	return nil
 }
